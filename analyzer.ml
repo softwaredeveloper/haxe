@@ -493,6 +493,7 @@ module Ssa = struct
 		mutable var_conds : (condition list) IntMap.t;
 		mutable loop_stack : (join_node * join_node) list;
 		mutable exception_stack : join_node list;
+		mutable block_depth : int;
 	}
 
 	let s_cond = function
@@ -604,6 +605,7 @@ module Ssa = struct
 			v.v_extra <- old
 		) :: ctx.cleanup;
 		ctx.cur_data.nd_var_map <- IntMap.add v.v_id v ctx.cur_data.nd_var_map;
+		v.v_meta <- ((Meta.Custom ":blockDepth",[EConst (Int (string_of_int ctx.block_depth)),p],p)) :: v.v_meta;
 		set_origin_var v v p
 
 	let assign_var ctx v e p =
@@ -896,7 +898,10 @@ module Ssa = struct
 							let e = loop ctx e in
 							e :: (loop2 el)
 				in
-				{e with eexpr = TBlock(loop2 el)}
+				ctx.block_depth <- ctx.block_depth + 1;
+				let el = loop2 el in
+				ctx.block_depth <- ctx.block_depth - 1;
+				{e with eexpr = TBlock(el)}
 			| _ ->
 				begin match ctx.exception_stack with
 					| join :: _ when can_throw e -> add_branch join ctx.cur_data e.epos
@@ -911,6 +916,7 @@ module Ssa = struct
 			loop_stack = [];
 			exception_stack = [];
 			cleanup = [];
+			block_depth = 0;
 		} in
 		let e = loop ctx e in
 		e,ctx
@@ -948,7 +954,16 @@ module ConstPropagation = struct
 		| _ ->
 			false
 
-	let can_be_inlined com e = match e.eexpr with
+	let get_block_depth v = try
+		let i = match Meta.get (Meta.Custom ":blockDepth") v.v_meta with
+			| _,[EConst(Int s),_],_ -> int_of_string s
+			| _ -> raise Not_found
+		in
+		i
+		with Not_found ->
+			-1
+
+	let can_be_inlined com d e = match e.eexpr with
 		| TConst ct ->
 			begin match ct with
 				| TThis | TSuper -> false
@@ -956,6 +971,17 @@ module ConstPropagation = struct
 				   in order for this to work. *)
 				| TNull when (match com.platform with Php | Cpp -> true | _ -> false) -> false
 				| _ -> true
+			end
+		| TLocal v ->
+			not (Meta.has Meta.CompilerGenerated v.v_meta) &&
+			begin try
+				let v' = Ssa.get_origin_var v in
+				begin match v'.v_extra with
+					| Some ([],_) -> get_block_depth v <= d
+					| _ -> false
+				end
+			with Not_found ->
+				false
 			end
 		| _ ->
 			false
@@ -1018,7 +1044,11 @@ module ConstPropagation = struct
 		| TParenthesis e1 | TMeta(_,e1) ->
 			value ssa e1
 		| TLocal v ->
-			local ssa v e
+			let e' = local ssa v e in
+			if can_be_inlined ssa.com (get_block_depth v) e' then
+				e'
+			else
+				e
  		| TEnumParameter(e1,ef,i) ->
 			let ev = value ssa e1 in
 			begin try semi_awkward_enum_value ssa ev i
@@ -1045,7 +1075,7 @@ module ConstPropagation = struct
 				{e with eexpr = TFunction {tf with tf_expr = loop tf.tf_expr}}
 			| TLocal v ->
 				let e' = local ssa v e in
-				if can_be_inlined ssa.com e' then
+				if can_be_inlined ssa.com (get_block_depth v) e' then
 					e'
 				else
 					e

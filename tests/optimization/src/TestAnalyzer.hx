@@ -657,24 +657,24 @@ class TestAnalyzer extends TestBase {
 		//assertEquals(50, call(a, a = a + 1, a));
 	//}
 
-	function testEnumValues() {
-		var array = [1];
-		var a = A("foo", 12, array);
-		switch (a) {
-			case A(s, i, a):
-				assertEqualsConst("foo", s);
-				assertEqualsConst(12, i);
-				assertEquals(array, a);
-			case B(_):
-		}
-
-		var b = B(0);
-		switch (b) {
-			case B(i):
-				assertEqualsConst(0, i);
-			case A(_):
-		}
-	}
+	//function testEnumValues() {
+		//var array = [1];
+		//var a = A("foo", 12, array);
+		//switch (a) {
+			//case A(s, i, a):
+				//assertEqualsConst("foo", s);
+				//assertEqualsConst(12, i);
+				//assertEquals(array, a);
+			//case B(_):
+		//}
+//
+		//var b = B(0);
+		//switch (b) {
+			//case B(i):
+				//assertEqualsConst(0, i);
+			//case A(_):
+		//}
+	//}
 
 	function cond1() {
 		append("cond1");
