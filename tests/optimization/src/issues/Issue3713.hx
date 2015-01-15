@@ -18,10 +18,10 @@ private class C<T> {
 
 class Issue3713 {
 	@:js('
-		var b = issues._Issue3713.B_Impl_._new();
-		var c_x = 1;
+		issues._Issue3713.B_Impl_._new();
+		1;
 	')
-	@:analyzer(no_const_propagation, no_local_dce, no_check_has_effect)
+	@:analyzer(no_check_has_effect)
 	static function test() {
         var b = new B<Int>();
         var c = b.f();

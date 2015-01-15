@@ -304,7 +304,7 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 	let vthis = alloc_var "_this" ethis.etype in
 	let inlined_vars = List.map2 (fun e (v,_) ->
 		let l = local v in
-		if has_side_effect e then l.i_force_temp <- true; (* force tmp var *)
+		if has_side_effect e || (Meta.has Meta.This v.v_meta) then l.i_force_temp <- true; (* force tmp var *)
 		l, e
 	) (ethis :: loop params f.tf_args true) ((vthis,None) :: f.tf_args) in
 	let inlined_vars = List.rev inlined_vars in
