@@ -524,7 +524,7 @@ let rec class_string klass suffix params =
    (* Array class *)
    |  ([],"Array") when is_dynamic_array_param (List.hd params) -> "Dynamic"
    |  ([],"Array") -> (snd klass.cl_path) ^ suffix ^ "< " ^ (String.concat ","
-               (List.map array_element_type params) ) ^ " >"
+               (List.map type_string params) ) ^ " >"
    (* FastIterator class *)
    |  (["cpp"],"FastIterator") -> "::cpp::FastIterator" ^ suffix ^ "< " ^ (String.concat ","
                (List.map type_string  params) ) ^ " >"
@@ -628,12 +628,6 @@ and type_string_suff suffix haxe_type =
    )
 and type_string haxe_type =
    type_string_suff "" haxe_type
-and array_element_type haxe_type =
-   match type_string haxe_type with
-   | x when cant_be_null x -> x
-   | x when is_interface_type (follow haxe_type) -> x
-   | "::String" -> "::String"
-   | _ -> "::Dynamic"
 
 and is_dynamic_array_param haxe_type =
    if (type_string (follow haxe_type)) = "Dynamic" then true
@@ -1766,19 +1760,6 @@ and gen_expression ctx retval expression =
          check_array_element_cast (Abstract.get_underlying_type abs pl) cast_name call
       | _ -> ()
    in
-   let rec check_array_cast array_type =
-      match follow array_type with
-      | x when is_interface_type x -> ()
-      | TInst (klass,[element]) ->
-         let name = type_string element in
-         if ( is_object name ) then
-            gen_array_cast ".StaticCast" "Array<Dynamic>" "()"
-         else
-            gen_array_cast ".StaticCast" (type_string array_type) "()"
-      | TAbstract (abs,pl) when abs.a_impl <> None ->
-         check_array_cast (Abstract.get_underlying_type abs pl)
-      | _ -> ()
-   in
 
    let rec gen_tfield field_object field =
       let member = (field_name field) in
@@ -1966,20 +1947,6 @@ and gen_expression ctx retval expression =
       if ( (is_variable func) && (not (is_cpp_function_member func) ) &&
            (expr_type<>"Dynamic") && (not is_super) && (not is_block_call)) then
          ctx.ctx_output (".Cast< " ^ expr_type ^ " >()" );
-
-      let rec cast_array_output func =
-         match func.eexpr with
-            | TField(obj,field) when is_array obj.etype ->
-               (match field_name field with
-                  | "pop" | "shift" -> check_array_element_cast obj.etype ".StaticCast" "()"
-                  | "map" -> check_array_cast expression.etype
-                  | _ -> ()
-               )
-            | TParenthesis p | TMeta(_,p) -> cast_array_output p
-            | _ -> ()
-      in
-      cast_array_output func;
-
    | TBlock expr_list ->
       if (retval) then
          gen_local_block_call()
@@ -2077,8 +2044,6 @@ and gen_expression ctx retval expression =
          output "->__get(";
          gen_expression ctx true index;
          output ")";
-         if not (is_pointer array_expr.etype true) then
-            check_array_element_cast array_expr.etype ".StaticCast" "()";
       end
    (* Get precidence matching haxe ? *)
    | TBinop (op,expr1,expr2) -> gen_bin_op op expr1 expr2
