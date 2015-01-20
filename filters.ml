@@ -38,69 +38,6 @@ let rec blockify_ast e =
 	| _ ->
 		Type.map_expr blockify_ast e
 
-(*
-	Pushes complex right-hand side expression inwards.
-
-	return { exprs; value; } -> { exprs; return value; }
-	x = { exprs; value; } -> { exprs; x = value; }
-	var x = { exprs; value; } -> { var x; exprs; x = value; }
-*)
-let promote_complex_rhs com e =
-	let rec is_complex e = match e.eexpr with
-		| TBlock _ | TSwitch _ | TIf _ | TTry _ | TCast(_,Some _) -> true
-		| TBinop(_,e1,e2) -> is_complex e1 || is_complex e2
-		| TParenthesis e | TMeta(_,e) | TCast(e, None) | TField(e,_) -> is_complex e
-		| _ -> false
-	in
-	let rec loop f e = match e.eexpr with
-		| TBlock(el) ->
-			begin match List.rev el with
-				| elast :: el -> {e with eexpr = TBlock(block (List.rev ((loop f elast) :: el)))}
-				| [] -> e
-			end
-		| TSwitch(es,cases,edef) ->
-			{e with eexpr = TSwitch(es,List.map (fun (el,e) -> List.map find el,loop f e) cases,match edef with None -> None | Some e -> Some (loop f e)); etype = com.basic.tvoid}
-		| TIf(eif,ethen,eelse) ->
-			{e with eexpr = TIf(find eif, loop f ethen, match eelse with None -> None | Some e -> Some (loop f e)); etype = com.basic.tvoid}
-		| TTry(e1,el) ->
-			{e with eexpr = TTry(loop f e1, List.map (fun (el,e) -> el,loop f e) el); etype = com.basic.tvoid}
-		| TParenthesis e1 when not (Common.defined com Define.As3) ->
-			{e with eexpr = TParenthesis(loop f e1)}
-		| TMeta(m,e1) ->
-			{ e with eexpr = TMeta(m,loop f e1)}
-		| TReturn _ | TThrow _ ->
-			find e
-		| TContinue | TBreak ->
-			e
-		| _ ->
-			f (find e)
-	and block el =
-		let r = ref [] in
-		List.iter (fun e ->
-			match e.eexpr with
-			| TVar(v,eo) ->
-				begin match eo with
-					| Some e when is_complex e ->
-						r := (loop (fun e -> mk (TBinop(OpAssign,mk (TLocal v) v.v_type e.epos,e)) v.v_type e.epos) e)
-							:: ((mk (TVar (v,None)) com.basic.tvoid e.epos))
-							:: !r
-					| Some e ->
-						r := (mk (TVar (v,Some (find e))) com.basic.tvoid e.epos) :: !r
-					| None -> r := (mk (TVar (v,None)) com.basic.tvoid e.epos) :: !r
-				end
-			| TReturn (Some e1) when (match follow e1.etype with TAbstract({a_path=[],"Void"},_) -> true | _ -> false) ->
-				r := ({e with eexpr = TReturn None}) :: e1 :: !r
-			| _ -> r := (find e) :: !r
-		) el;
-		List.rev !r
-	and find e = match e.eexpr with
-		| TReturn (Some e1) -> loop (fun er -> {e with eexpr = TReturn (Some er)}) e1
-		| TBinop(OpAssign | OpAssignOp _ as op, ({eexpr = TLocal _ | TField _ | TArray _} as e1), e2) -> loop (fun er -> {e with eexpr = TBinop(op, e1, er)}) e2
-		| TBlock(el) -> {e with eexpr = TBlock (block el)}
-		| _ -> Type.map_expr find e
-	in
-	find e
-
 (* Adds final returns to functions as required by some platforms *)
 let rec add_final_return e =
 	let rec loop e t =
@@ -1046,23 +983,27 @@ let run com tctx main =
 		List.iter (run_expression_filters tctx filters) new_types;
 	end else begin
 		(* PASS 1: general expression filters *)
+		let run_simplify =
+			not (Common.defined com Define.NoSimplify) &&
+			not (Common.defined com Define.Cppia) &&
+			(match com.platform with Cpp | Flash8 -> true | _ -> false)
+		in
 		let filters = [
 			Codegen.UnificationCallback.run (check_unification com);
 			Codegen.AbstractCast.handle_abstract_casts tctx;
 			blockify_ast;
-			( if (Common.defined com Define.NoSimplify) || (Common.defined com Define.Cppia) ||
-						( match com.platform with Cpp | Flash8 -> false | _ -> true ) then
-					fun e -> e
-				else
-					fun e ->
-						let save = save_locals tctx in
-						let e = try snd (Analyzer.Simplifier.apply com (Typecore.gen_local tctx) e) with Exit -> e in
-						save();
-					e );
+			if not run_simplify then
+				(fun e -> e)
+			else
+				(fun e ->
+					let save = save_locals tctx in
+					let e = try snd (Analyzer.Simplifier.apply com (Typecore.gen_local tctx) e) with Exit -> e in
+					save();
+				e);
 			if com.foptimize then (fun e -> Optimizer.reduce_expression tctx (Optimizer.inline_constructors tctx e)) else Optimizer.sanitize com;
 			check_local_vars_init;
 			captured_vars com;
-			promote_complex_rhs com;
+			if not run_simplify then Analyzer.Run.run_simplify com else (fun e -> e);
 			if com.config.pf_add_final_return then add_final_return else (fun e -> e);
 			rename_local_vars tctx;
 		] in

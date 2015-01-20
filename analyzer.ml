@@ -403,7 +403,7 @@ module Simplifier = struct
 									| {eexpr = TBinop(OpAssign,{eexpr = TLocal v2},e2)} :: el when v == v2 ->
 										let e = {e with eexpr = TVar(v,Some e2)} in
 										loop2 (e :: el)
-									| ({eexpr = TIf(e1,e2,Some e3)} as e_if) :: el ->
+(* 									| ({eexpr = TIf(e1,e2,Some e3)} as e_if) :: el ->
 										let e1 = loop e1 in
 										let e2 = loop e2 in
 										let e3 = loop e3 in
@@ -415,7 +415,7 @@ module Simplifier = struct
 											| _ ->
 												let e_if = {e_if with eexpr = TIf(e1,e2,Some e3)} in
 												e :: e_if :: loop2 el
-										end
+										end *)
 									| _ ->
 										let e = loop e in
 										e :: loop2 el
@@ -1358,6 +1358,10 @@ end
 module Run = struct
 
 	open Config
+
+	let run_simplify com e =
+		let _,e = Simplifier.apply com (fun t -> alloc_var "tmp" t) e in
+		Simplifier.unapply com e
 
 	let run_on_expr com config is_var_expression e =
 		let rec gen_local t =
