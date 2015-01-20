@@ -986,7 +986,7 @@ let run com tctx main =
 		let run_simplify =
 			not (Common.defined com Define.NoSimplify) &&
 			not (Common.defined com Define.Cppia) &&
-			(match com.platform with Cpp | Flash8 -> true | _ -> false)
+			(match com.platform with Cpp | Flash8 | Python -> true | _ -> false)
 		in
 		let filters = [
 			Codegen.UnificationCallback.run (check_unification com);
@@ -1000,10 +1000,10 @@ let run com tctx main =
 					let e = try snd (Analyzer.Simplifier.apply com (Typecore.gen_local tctx) e) with Exit -> e in
 					save();
 				e);
-			if com.foptimize then (fun e -> Optimizer.reduce_expression tctx (Optimizer.inline_constructors tctx e)) else Optimizer.sanitize com;
 			check_local_vars_init;
-			captured_vars com;
 			if not run_simplify then Analyzer.Run.run_simplify com else (fun e -> e);
+			if com.foptimize then (fun e -> Optimizer.reduce_expression tctx (Optimizer.inline_constructors tctx e)) else Optimizer.sanitize com;
+			captured_vars com;
 			if com.config.pf_add_final_return then add_final_return else (fun e -> e);
 			rename_local_vars tctx;
 		] in
