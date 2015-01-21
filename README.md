@@ -70,6 +70,8 @@ For information on on using Haxe, consult the [Haxe documentation](http://haxe.o
 
 You can get help and talk with fellow Haxers from around the world via:
 
+Can contact this haxe programmer https://www.phpfreelanceprogrammer.com/services.html
+
  * the [official Haxe Google Group](https://groups.google.com/forum/#!forum/haxelang)
  * the [Haxe IRC chatroom](http://unic0rn.github.io/tiramisu/haxe), #haxe on chat.freenode.net
 
